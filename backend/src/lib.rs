@@ -1,23 +1,16 @@
-use axum::{
-    extract::Json,
-    routing::{get, post},
-    Router,
-};
-use svg::Document;
-use svg::{node::Attributes, Node};
-
-use std::{collections::HashMap, net::SocketAddr, path::PathBuf};
-use tower_http::{
-    services::ServeDir,
-    trace::{DefaultMakeSpan, TraceLayer},
-};
-
 use serde::{Deserialize, Serialize};
 
-use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
+use winit::{
+    event::*,
+    event_loop::{ControlFlow, EventLoop},
+    window::WindowBuilder,
+};
 
-const CANVAS_WIDTH: f64 = 3600.0;
-const CANVAS_HEIGHT: f64 = 3600.0;
+#[cfg(target_arch = "wasm32")]
+use wasm_bindgen::prelude::*;
+
+const CANVAS_WIDTH: f64 = 8000.0;
+const CANVAS_HEIGHT: f64 = 8000.0;
 const COLOR_PALETTE: [Color; 6] = [
     Color::new(0, 0, 255),
     Color::new(32, 107, 203),
@@ -70,78 +63,71 @@ struct MandelbrotResponse {
     points: Vec<Point>,
 }
 
-#[tokio::main]
-async fn main() {
+fn main() {
     let params = RequestParams {
         height: CANVAS_HEIGHT as i32,
         width: CANVAS_WIDTH as i32,
         max_iter: 300,
         scale_factor: 1,
     };
-    let points = post_mandelbrot_request(Json(params)).await.0;
-    let save_path = PathBuf::from("./out.svg");
-    render_svg(points, &save_path)
-    //tracing_subscriber::registry()
-    //    .with(
-    //        tracing_subscriber::EnvFilter::try_from_default_env()
-    //            .unwrap_or_else(|_| "example_websockets=debug,tower_http=debug".into()),
-    //    )
-    //    .with(tracing_subscriber::fmt::layer())
-    //    .init();
-
-    //let assets_dir = PathBuf::from("../");
-
-    //// build our application with some routes
-    //let app = Router::new()
-    //    .fallback_service(ServeDir::new(assets_dir).append_index_html_on_directories(true))
-    //    .route("/post-mandelbrot-request", post(post_mandelbrot_request))
-    //    // logging so we can see whats going on
-    //    .layer(
-    //        TraceLayer::new_for_http()
-    //            .make_span_with(DefaultMakeSpan::default().include_headers(true)),
-    //    );
-
-    //// run it with hyper
-    //let listener = tokio::net::TcpListener::bind("127.0.0.1:3000")
-    //    .await
-    //    .unwrap();
-    //tracing::debug!("listening on {}", listener.local_addr().unwrap());
-    //axum::serve(
-    //    listener,
-    //    app.into_make_service_with_connect_info::<SocketAddr>(),
-    //)
-    //.await
-    //.unwrap();
+    //let points = post_mandelbrot_request(params);
+    run();
 }
 
-fn render_svg(points: MandelbrotResponse, save_path: &PathBuf) {
-    let mut document = Document::new();
-    let colors = COLOR_PALETTE
-        .iter()
-        .map(|color| {
-            (
-                color.clone(),
-                format!("rgb({},{},{})", color.red, color.green, color.blue),
-            )
-        })
-        .collect::<HashMap<Color, String>>();
-    let black = "rgb(0,0,0)".to_string();
+#[cfg_attr(target_arch = "wasm32", wasm_bindgen(start))]
+pub fn run() {
+    cfg_if::cfg_if! {
+        if #[cfg(target_arch = "wasm32")] {
+            std::panic::set_hook(Box::new(console_error_panic_hook::hook));
+            console_log::init_with_level(log::Level::Warn).expect("Couldn't initialize logger");
+        } else {
+            env_logger::init();
+        }
+    }
+    let event_loop = EventLoop::new();
+    let window = WindowBuilder::new().build(&event_loop).unwrap();
 
-    for point in points.points {
-        let c = colors.get(&point.color).unwrap_or(&black);
-        //arc(x, y, radius, startAngle, endAngle, counterclockwise)
-        let arc = svg::node::element::Circle::new()
-            .set("cx", point.x)
-            .set("cy", point.y)
-            .set("r", 0.1)
-            .set("fill", c.clone());
-        document.append(arc);
+    #[cfg(target_arch = "wasm32")]
+    {
+        // Winit prevents sizing with CSS, so we have to set
+        // the size manually when on web.
+        use winit::dpi::PhysicalSize;
+        window.set_inner_size(PhysicalSize::new(450, 400));
+
+        use winit::platform::web::WindowExtWebSys;
+        web_sys::window()
+            .and_then(|win| win.document())
+            .and_then(|doc| {
+                let dst = doc.get_element_by_id("plot")?;
+                let canvas = web_sys::Element::from(window.canvas());
+                dst.append_child(&canvas).ok()?;
+                Some(())
+            })
+            .expect("Couldn't append canvas to document body.");
     }
 
-    svg::save(save_path, &document).unwrap();
+    event_loop.run(move |event, _, control_flow| match event {
+        Event::WindowEvent {
+            ref event,
+            window_id,
+        } if window_id == window.id() => match event {
+            WindowEvent::CloseRequested
+            | WindowEvent::KeyboardInput {
+                input:
+                    KeyboardInput {
+                        state: ElementState::Pressed,
+                        virtual_keycode: Some(VirtualKeyCode::Escape),
+                        ..
+                    },
+                ..
+            } => *control_flow = ControlFlow::Exit,
+            _ => {}
+        },
+        _ => {}
+    });
 }
 
-async fn post_mandelbrot_request(Json(request): Json<RequestParams>) -> Json<MandelbrotResponse> {
+fn post_mandelbrot_request(request: RequestParams) -> MandelbrotResponse {
     let start = std::time::SystemTime::now();
 
     let points = calculate_all_mandelbrot_points(
@@ -154,7 +140,7 @@ async fn post_mandelbrot_request(Json(request): Json<RequestParams>) -> Json<Man
     let dur = end.duration_since(start).unwrap();
     println!("time to calculate {} points was {:?}", points.len(), dur);
 
-    Json(MandelbrotResponse { points })
+    MandelbrotResponse { points }
 }
 
 fn calculate_all_mandelbrot_points(
