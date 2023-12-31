@@ -3,8 +3,10 @@ use axum::{
     routing::{get, post},
     Router,
 };
+use svg::Document;
+use svg::{node::Attributes, Node};
 
-use std::{net::SocketAddr, path::PathBuf};
+use std::{collections::HashMap, net::SocketAddr, path::PathBuf};
 use tower_http::{
     services::ServeDir,
     trace::{DefaultMakeSpan, TraceLayer},
@@ -14,8 +16,8 @@ use serde::{Deserialize, Serialize};
 
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
-const CANVAS_WIDTH: f64 = 800.0;
-const CANVAS_HEIGHT: f64 = 800.0;
+const CANVAS_WIDTH: f64 = 3600.0;
+const CANVAS_HEIGHT: f64 = 3600.0;
 const COLOR_PALETTE: [Color; 6] = [
     Color::new(0, 0, 255),
     Color::new(32, 107, 203),
@@ -50,7 +52,7 @@ struct Point {
     color: Color,
 }
 
-#[derive(Debug, Serialize, Deserialize, Copy, Clone)]
+#[derive(Debug, Serialize, Deserialize, Copy, Clone, PartialEq, PartialOrd, Ord, Hash, Eq)]
 struct Color {
     red: u8,
     green: u8,
@@ -70,46 +72,87 @@ struct MandelbrotResponse {
 
 #[tokio::main]
 async fn main() {
-    tracing_subscriber::registry()
-        .with(
-            tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| "example_websockets=debug,tower_http=debug".into()),
-        )
-        .with(tracing_subscriber::fmt::layer())
-        .init();
+    let params = RequestParams {
+        height: CANVAS_HEIGHT as i32,
+        width: CANVAS_WIDTH as i32,
+        max_iter: 300,
+        scale_factor: 1,
+    };
+    let points = post_mandelbrot_request(Json(params)).await.0;
+    let save_path = PathBuf::from("./out.svg");
+    render_svg(points, &save_path)
+    //tracing_subscriber::registry()
+    //    .with(
+    //        tracing_subscriber::EnvFilter::try_from_default_env()
+    //            .unwrap_or_else(|_| "example_websockets=debug,tower_http=debug".into()),
+    //    )
+    //    .with(tracing_subscriber::fmt::layer())
+    //    .init();
 
-    let assets_dir = PathBuf::from("../");
+    //let assets_dir = PathBuf::from("../");
 
-    // build our application with some routes
-    let app = Router::new()
-        .fallback_service(ServeDir::new(assets_dir).append_index_html_on_directories(true))
-        .route("/post-mandelbrot-request", post(post_mandelbrot_request))
-        // logging so we can see whats going on
-        .layer(
-            TraceLayer::new_for_http()
-                .make_span_with(DefaultMakeSpan::default().include_headers(true)),
-        );
+    //// build our application with some routes
+    //let app = Router::new()
+    //    .fallback_service(ServeDir::new(assets_dir).append_index_html_on_directories(true))
+    //    .route("/post-mandelbrot-request", post(post_mandelbrot_request))
+    //    // logging so we can see whats going on
+    //    .layer(
+    //        TraceLayer::new_for_http()
+    //            .make_span_with(DefaultMakeSpan::default().include_headers(true)),
+    //    );
 
-    // run it with hyper
-    let listener = tokio::net::TcpListener::bind("127.0.0.1:3000")
-        .await
-        .unwrap();
-    tracing::debug!("listening on {}", listener.local_addr().unwrap());
-    axum::serve(
-        listener,
-        app.into_make_service_with_connect_info::<SocketAddr>(),
-    )
-    .await
-    .unwrap();
+    //// run it with hyper
+    //let listener = tokio::net::TcpListener::bind("127.0.0.1:3000")
+    //    .await
+    //    .unwrap();
+    //tracing::debug!("listening on {}", listener.local_addr().unwrap());
+    //axum::serve(
+    //    listener,
+    //    app.into_make_service_with_connect_info::<SocketAddr>(),
+    //)
+    //.await
+    //.unwrap();
+}
+
+fn render_svg(points: MandelbrotResponse, save_path: &PathBuf) {
+    let mut document = Document::new();
+    let colors = COLOR_PALETTE
+        .iter()
+        .map(|color| {
+            (
+                color.clone(),
+                format!("rgb({},{},{})", color.red, color.green, color.blue),
+            )
+        })
+        .collect::<HashMap<Color, String>>();
+    let black = "rgb(0,0,0)".to_string();
+
+    for point in points.points {
+        let c = colors.get(&point.color).unwrap_or(&black);
+        //arc(x, y, radius, startAngle, endAngle, counterclockwise)
+        let arc = svg::node::element::Circle::new()
+            .set("cx", point.x)
+            .set("cy", point.y)
+            .set("r", 0.1)
+            .set("fill", c.clone());
+        document.append(arc);
+    }
+
+    svg::save(save_path, &document).unwrap();
 }
 
 async fn post_mandelbrot_request(Json(request): Json<RequestParams>) -> Json<MandelbrotResponse> {
+    let start = std::time::SystemTime::now();
+
     let points = calculate_all_mandelbrot_points(
         request.width,
         request.height,
         request.max_iter,
         request.scale_factor,
     );
+    let end = std::time::SystemTime::now();
+    let dur = end.duration_since(start).unwrap();
+    println!("time to calculate {} points was {:?}", points.len(), dur);
 
     Json(MandelbrotResponse { points })
 }
@@ -151,7 +194,6 @@ fn calculate_mandelbrot_point_with_color(
 
         if distance > 2.0 {
             let color = COLOR_PALETTE[i as usize % COLOR_PALETTE.len()];
-            println!("color {:?}, x {x_pos}, y {y_pos}", color);
             return Point {
                 x: x_pos,
                 y: y_pos,

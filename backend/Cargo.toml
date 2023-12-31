@@ -15,6 +15,7 @@ tokio = { version = "1.35", features = ["full"] }
 futures = "0.3"
 futures-util = { version = "0.3", default-features = false, features = ["sink", "std"] }
 headers = "0.4"
+svg = "0.14.0"
 tokio-tungstenite = "0.21"
 tower = { version = "0.4", features = ["util"] }
 tower-http = { version = "0.5.0", features = ["fs", "trace"] }
