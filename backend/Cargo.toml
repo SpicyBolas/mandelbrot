@@ -9,9 +9,7 @@ edition = "2021"
 serde = { version = "1.0", features = ["derive"] }
 serde_derive = "1.0.188"
 serde_json = "1.0.108"
-headers = "0.4"
-svg = "0.14.0"
-
+pollster = "0.3"
 winit = "0.28"
 env_logger = "0.10"
 log = "0.4"
@@ -30,5 +28,5 @@ web-sys = { version = "0.3", features = [
     "Element",
 ]}
 
-[lib]
-crate-type = ["cdylib", "rlib"]
+# [lib]
+# crate-type = ["cdylib", "rlib"]
