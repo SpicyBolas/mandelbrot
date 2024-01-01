@@ -3,6 +3,18 @@ var canvas = document.getElementById('plot');
 const width = canvas.width;
 const height = canvas.width;
 //canvas.addEventListener('onclick');
+//
+//wgpu boilerplate
+
+async function initWebGPU() {
+
+	if (!navigator.gpu) {
+		throw new Error('No webGPU support');
+	}
+	const adapter = await navigator.gpu.requestAdapter();
+}
+
+initWebGPU();
 
 const context = canvas.getContext('2d');
 
@@ -37,25 +49,6 @@ function pxToCart(p_p,SF=1,xOffset,yOffset) {
 //Define color array for the stability points
 mBpalette = ['rgb(0,0,255)','rgb(32,107,203)','rgb(255,100,100)','rgb(255,170,100)','rgb(255,200,100)','rgb(0,255,0)'];
 
-
-
-
-//Get the first 5 iterations of mandelbrot
-
-function mandelbrotIter(c,iter) {
-    let z_arr = [[...c]];
-    for (i=0;i<iter;i++){
-        //real part
-        let a = z_arr[z_arr.length-1][0];
-        //imaginary part
-        let b = z_arr[z_arr.length-1][1];
-        //perform the iteration
-        z_arr2 = [...z_arr,[(a**2-b**2)+c[0],2*a*b+c[1]]];
-        z_arr = [...z_arr2];
-    }
-    return z_arr;
-}
-
 function mandelbrot(z_prev,c) {
     //real part
     let a = z_prev[0];
@@ -85,7 +78,6 @@ function plotPoint(x,y,color,radius=5){
 
 
 //Plot the mandelbrot set
-    
 //function for plotting
 function plotMandelbrot(xp,yp,MAX_ITER,SF=1,offsetX=0,offsetY=0){
     //convert to cartesian
@@ -116,31 +108,6 @@ for(let xp=0;xp<width+1;xp++){
     }
 }
 
-
-
-//Create event listener to plot point when clicked/mousemove
-/*function handleEvent(e){
-    context.clearRect(0,0,width,height)
-    let xp = e.offsetX
-    let yp = e.offsetY
-
-    //convert to cartesian
-    let [x,y] = pxToCart([xp,yp]);
-    //Iterate using the logistic equation
-    let z_arr = mandelbrotIter([x,y],iter=10);
-    //Convert back to pixel coordinates
-    let z_arr_px = z_arr.map(cartToPx);
-    console.log(z_arr_px);
-    for(let i=0;i<z_arr_px.length;i++){
-        plotPoint(z_arr_px[i][0],z_arr_px[i][1],color=palette[i % palette.length])
-        if(i>0){
-            drawLine(z_arr_px[i],z_arr_px[i-1])
-        }
-    }
-
-}
-
-canvas.addEventListener('mousemove',handleEvent)*/
 function handleEvent(e){
     
     let xp = e.offsetX
@@ -150,8 +117,6 @@ function handleEvent(e){
     let [x,y] = pxToCart([xp,yp]);
     var coords = document.getElementById('coords');
     coords.innerHTML = 'Real: ' + x.toString() + ', Imaginary: ' + y.toString();
-
-
 }
 
 function handleZoom(e){
@@ -183,7 +148,6 @@ function handleZoomOut(e){
         offsetX = 0;
         offsetY = 0;
     } 
-
 
     for(let xp=0;xp<width+1;xp++){
         for(let yp=0;yp<height+1;yp++){
