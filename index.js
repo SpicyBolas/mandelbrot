@@ -1,97 +1,108 @@
-const canvas = document.getElementById('plot');
+async function initWebGPU() {
+    const canvas = document.querySelector("canvas");
 
-const WIDTH = canvas.width;
-const HEIGHT = canvas.width;
+	if (!navigator.gpu) {
+	  throw new Error("WebGPU not supported on this browser.");
+	}
 
-const context = canvas.getContext('2d');
-const MAX_ITER = 300;
-let scaleFactor = 1;
-
-//Define color array for the stability points
-mBpalette = ['rgb(0,0,255)','rgb(32,107,203)','rgb(255,100,100)','rgb(255,170,100)','rgb(255,200,100)','rgb(0,255,0)'];
-
-canvas.addEventListener('click',handleZoom);
-canvas.addEventListener('contextmenu',handleZoomOut);
-
-function getPoints() {
-	const params = {
-		height: HEIGHT,
-		width: WIDTH,
-		max_iter: MAX_ITER,
-		scale_factor: scaleFactor
-	};
+	const adapter = await navigator.gpu.requestAdapter();
+	if (!adapter) {
+		throw new Error("No GPUAdapter Found");
+	}
 	
-	fetch('http://localhost:3000/post-mandelbrot-request', {
-		method: "POST",
-		body: JSON.stringify(params),
-		headers: {
-    		"Content-type": "application/json; charset=UTF-8"
-  		}
-	})
-	.then((response) => response.json())
-	.then((response) => {
-		let points = response.points;
-		//console.log(points);
-		for (let i = 0; i < points.length; i++) {
-			let color = `rgb(${points[i].color.red},${points[i].color.green},${points[i].color.blue})`;
-			console.log(color);
-			plotPoint(points[i].x, points[i].y, color, radius=1);
-		}
-		console.log('done');
+	const device = await adapter.requestDevice();
+
+	const context = canvas.getContext('webgpu'); 
+	const canvasFormat = navigator.gpu.getPreferredCanvasFormat();
+	context.configure({
+		device: device,
+		format: canvasFormat,
 	});
+
+
+	//TODO - loook at Index Buffers. basically define a point then have the GPU connect them
+	const vertices = new Float32Array([
+	//   X,    Y,
+	  -0.8, -0.8,
+	   0.8, -0.8,
+	   0.8,  0.8,
+
+	  -0.8,  -0.8,
+	   0.8,  0.8,
+		-0.8,  0.8,
+	]);
+
+	const encoder = device.createCommandEncoder();
+	// start defining things for the GPU to do
+	const pass = encoder.beginRenderPass({
+		colorAttachments: [{
+			view: context.getCurrentTexture().createView(),
+			loadOp: "clear",
+			clearValue: {r: 0.1, g: 0.5, b:0.7, a: 1},
+			storeOp: "store",
+		}]
+	});
+
+	// basically like preparing memory for the GPU
+	const vertexBuffer = device.createBuffer({
+		label: "verticies",
+		size: vertices.byteLength,
+		usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
+	});
+
+	//add our vertices to the vertexBuffer
+	device.queue.writeBuffer(vertexBuffer, 0, vertices);
+
+	const vertexBufferLayout = {
+		arrayStride: 8, //number of bytes the GPU needs to skip to look at the next vertex
+		attributes: [{
+			format: "float32x2", //our vertices were defined at a 2D array of floats
+			offset: 0,
+			shaderLocation: 0,
+		}],
+	};
+
+	// the code is the WGSL code
+	// it is run once for every vertex
+	const cellShaderModule = device.createShaderModule({
+		label: "Cell shader",
+		code: `
+			@vertex
+			fn vertexMain(@location(0) pos: vec2f) -> @builtin(position) vec4f {
+				return vec4f(pos.x, pos.y, 0, 1);
+			}
+			@fragment
+			fn fragmentMain() -> @location(0) vec4f {
+				return vec4f(1, 0, 0, 1);
+			}
+		`
+	});
+	const cellPipeline = device.createRenderPipeline({
+		label: "Cell pipeline",
+		layout: "auto",
+		vertex: {
+			module: cellShaderModule, 
+			entryPoint: "vertexMain",
+			buffers: [vertexBufferLayout]
+		},
+		fragment: {
+			module: cellShaderModule,
+			entryPoint: "fragmentMain",
+			targets: [{
+				format: canvasFormat //where to draw
+			}]
+		}
+	});
+
+	pass.setPipeline(cellPipeline);
+	pass.setVertexBuffer(0, vertexBuffer);
+	pass.draw(vertices.length / 2);
+
+	pass.end();
+
+	//actually submit the rendering to the GPU
+	const commandBuffer = encoder.finish();
+	device.queue.submit([commandBuffer]);
 }
 
-//Draw line between two points
-function drawLine(src,dst) {
-    context.beginPath();
-    context.moveTo(src[0],src[1]);
-    context.lineTo(dst[0],dst[1]);
-    context.stroke();
-}
-
-//Point plotting function taking input pixel coordinates
-function plotPoint(x,y,color,radius=5){
-    context.beginPath();
-    context.arc(x,y,radius,0,2 * Math.PI);
-    context.fillStyle = color;
-    context.fill();
-	console.log('here with ' + color + ' x: ' + x + ', y: ' + y + ', rad: ' + radius);
-}
-
-function handleZoom(e){
-    let xp = e.offsetX;
-    let yp = e.offsetY;
-
-    //convert the zoom coords to cartesian coords
-    let [offsetX2,offsetY2] = pxToCart([xp,yp],scaleFactor,offsetX,offsetY);
-
-    offsetX = offsetX2;
-    offsetY = offsetY2;
-    let SCALE_FACTOR2 = 1/10*scaleFactor;
-    scaleFactor = SCALE_FACTOR2;
-
-    for(let xp=0;xp<WIDTH+1;xp++){
-        for(let yp=0;yp<HEIGHT+1;yp++){
-            plotMandelbrot(xp,yp,100,SCALE_FACTOR2,offsetX,offsetY);
-        }
-    }
-}
-
-function handleZoomOut(e){
-    e.preventDefault();
-    let SCALE_FACTOR2 = Math.min(10*scaleFactor,1);
-    scaleFactor = SCALE_FACTOR2;
-    if(scaleFactor==1){
-        offsetX = 0;
-        offsetY = 0;
-    } 
-
-    for(let xp=0;xp<WIDTH+1;xp++){
-        for(let yp=0;yp<HEIGHT+1;yp++){
-            plotMandelbrot(xp,yp,100,SCALE_FACTOR2,offsetX,offsetY);
-        }
-    }
-}
-
-
-getPoints();
+initWebGPU();
