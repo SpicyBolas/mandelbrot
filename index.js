@@ -3,7 +3,8 @@ var canvas = document.getElementById('plot');
 const width = canvas.width;
 const height = canvas.width;
 //canvas.addEventListener('onclick');
-//
+// launch chrome on nixos with 
+// NIXPKGS_ALLOW_UNFREE=1 nix run github:r-k-b/browser-previews#google-chrome-dev --impure -- --enable-unsafe-webgpu --enable-features=Vulkan,UseSkiaRenderer
 //wgpu boilerplate
 
 async function initWebGPU() {
@@ -12,11 +13,36 @@ async function initWebGPU() {
 		throw new Error('No webGPU support');
 	}
 	const adapter = await navigator.gpu.requestAdapter();
+	const device = await adapter.requestDevice();
+
+
+	const context = canvas.getContext('webgpu');
+	const canvasFormat = navigator.gpu.getPreferredCanvasFormat();
+
+	context.configure({
+		device: device,
+		format: canvasFormat,
+	});
+
+	// create instructions for GPU to clear the canvas 
+	const encoder = device.createCommandEncoder();
+	const renderPass = encoder.beginRenderPass({
+		colorAttachments: [{
+			view: context.getCurrentTexture().createView(),
+			loadOp: "clear",
+			storeOp: "store",
+		}]
+	});
+	renderPass.end();
+
+	// actually submit command to gpu
+	const commandBuffer = encoder.finish();
+	device.queue.submit([commandBuffer]);
+
 }
 
 initWebGPU();
 
-const context = canvas.getContext('2d');
 
 const center = width/2; //height and width are the same so just one value is fine
 
