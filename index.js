@@ -7,6 +7,8 @@ const COLOR_PALETTE = [
     [0.0 / 255.0, 255.0 / 255.0, 0.0 / 255.0],
 ]; //divide by 255 to normalize into floating point for gpu
 const SCALE_FACTOR = 1.0;
+const OFFSET_X = 0.0;
+const OFFSET_Y = 0.0;
 
 const canvas = document.querySelector("canvas");
 
@@ -193,9 +195,8 @@ function calculateAllMandelbrotPoints(width, height, maxIterations) {
 
 function calculateMandelbrotPointWithColor(xPos, yPos, maxIter, canvasHeight, canvasWidth) {
 	let [xVertex, yVertex] = pixelToVertexCoordinates(xPos, yPos, canvasHeight, canvasWidth);
-	let [x, y] = pixelToCartesianCoordinates(xPos, yPos, 0, 0, canvasHeight, canvasWidth);
+	let [x, y] = pixelToCartesianCoordinates(xPos, yPos, canvasHeight, canvasWidth);
 	let c = [x, y];
-	//FIXME- double check if calculating the mandelbrot set with fractional units is fine
 	for (let i = 0; i < maxIter; i++) {
 		let [xNew, yNew] = singleMandelbrotCalculation([x, y], c);
 		let distance = Math.sqrt(xNew**2 + yNew**2);
@@ -224,53 +225,52 @@ function pixelToVertexCoordinates(xPos, yPos, canvasHeight, canvasWidth) {
 	return [cartX, cartY];
 }
 
-function pixelToCartesianCoordinates(xPos, yPos, offsetX, offsetY, canvasHeight, canvasWidth) {
+function pixelToCartesianCoordinates(xPos, yPos, canvasHeight, canvasWidth) {
 	let axFactor = 2.0 * SCALE_FACTOR;
-	let x = xPos / (canvasWidth / (2.0 * axFactor)) - axFactor + offsetX; 
-	let y = -yPos / (canvasHeight / (2.0 * axFactor)) + axFactor + offsetY;
+	let x = xPos / (canvasWidth / (2.0 * axFactor)) - axFactor + OFFSET_X; 
+	let y = -yPos / (canvasHeight / (2.0 * axFactor)) + axFactor + OFFSET_Y;
 	return [x, y];
 }
 
-//TODO -zoom memes
-//function handleZoom(e){
-//    let xp = e.offsetX;
-//    let yp = e.offsetY;
-//    //convert the zoom coords to cartesian coords
-//
-//    let [offsetX2,offsetY2] = pxToCart([xp,yp],SCALE_FACTOR,offsetX,offsetY);
-//
-//    offsetX = offsetX2;
-//    offsetY = offsetY2;
-//    let SCALE_FACTOR2 = 1/10*SCALE_FACTOR;
-//    SCALE_FACTOR = SCALE_FACTOR2;
-//
-//
-//    for(let xp=0;xp<width+1;xp++){
-//        for(let yp=0;yp<height+1;yp++){
-//            plotMandelbrot(xp,yp,100,SCALE_FACTOR2,offsetX,offsetY);
-//        }
-//    }
-//
-//}
-//
-//function handleZoomOut(e){
-//    e.preventDefault();
-//    let SCALE_FACTOR2 = Math.min(10*SCALE_FACTOR,1);
-//    SCALE_FACTOR = SCALE_FACTOR2;
-//    if(SCALE_FACTOR==1){
-//        offsetX = 0;
-//        offsetY = 0;
-//    }
-//
-//
-//    for(let xp=0;xp<width+1;xp++){
-//        for(let yp=0;yp<height+1;yp++){
-//            plotMandelbrot(xp,yp,100,SCALE_FACTOR2,offsetX,offsetY);
-//        }
-//    }
-//
-//}
-//
+function handleZoom(e){
+    let xPos = e.offsetX;
+    let yPos = e.offsetY;
+    //convert the zoom coords to cartesian coords
+
+    let [offsetX2,offsetY2] = pixelToCartesianCoordinates(xPos, yPos, canvas.height, canvas.width) 
+
+    OFFSET_X = offsetX2;
+    OFFSET_Y = offsetY2;
+    let SCALE_FACTOR2 = 1/10*SCALE_FACTOR;
+    SCALE_FACTOR = SCALE_FACTOR2;
+
+
+    for(let xp=0;xp<width+1;xp++){
+        for(let yp=0;yp<height+1;yp++){
+            plotMandelbrot(xp,yp,100,SCALE_FACTOR2,offsetX,offsetY);
+        }
+    }
+
+}
+
+function handleZoomOut(e){
+    e.preventDefault();
+    let SCALE_FACTOR2 = Math.min(10*SCALE_FACTOR,1);
+    SCALE_FACTOR = SCALE_FACTOR2;
+    if(SCALE_FACTOR==1){
+        OFFSET_X = 0;
+        OFFSET_Y = 0;
+    }
+
+
+    for(let xp=0;xp<width+1;xp++){
+        for(let yp=0;yp<height+1;yp++){
+            plotMandelbrot(xp,yp,100,SCALE_FACTOR2,offsetX,offsetY);
+        }
+    }
+
+}
+
 initWebGPU();
 
 canvas.addEventListener('click',handleZoom);
