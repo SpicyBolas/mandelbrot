@@ -6,9 +6,9 @@ const COLOR_PALETTE = [
     [255.0 / 255.0, 200.0 / 255.0, 100.0 / 255.0],
     [0.0 / 255.0, 255.0 / 255.0, 0.0 / 255.0],
 ]; //divide by 255 to normalize into floating point for gpu
-const SCALE_FACTOR = 1.0;
-const OFFSET_X = 0.0;
-const OFFSET_Y = 0.0;
+let SCALE_FACTOR = 1.0;
+let OFFSET_X = 0.0;
+let OFFSET_Y = 0.0;
 
 const canvas = document.querySelector("canvas");
 
@@ -94,7 +94,7 @@ async function initWebGPU() {
 		format: canvasFormat,
 	});
 	
-	const vertices = calculateAllMandelbrotPoints(canvas.width, canvas.height, 100, 1);
+	const vertices = calculateAllMandelbrotPoints(canvas.width, canvas.height, 300, 1);
 
 	const encoder = device.createCommandEncoder();
 	// start defining things for the GPU to do
@@ -196,7 +196,8 @@ function calculateAllMandelbrotPoints(width, height, maxIterations) {
 function calculateMandelbrotPointWithColor(xPos, yPos, maxIter, canvasHeight, canvasWidth) {
 	let [xVertex, yVertex] = pixelToVertexCoordinates(xPos, yPos, canvasHeight, canvasWidth);
 	let [x, y] = pixelToCartesianCoordinates(xPos, yPos, canvasHeight, canvasWidth);
-	let c = [x, y];
+	let c_temp = [x, y];
+	let c = JSON.parse(JSON.stringify(c_temp));
 	for (let i = 0; i < maxIter; i++) {
 		let [xNew, yNew] = singleMandelbrotCalculation([x, y], c);
 		let distance = Math.sqrt(xNew**2 + yNew**2);
@@ -220,8 +221,10 @@ function singleMandelbrotCalculation(zPrev, c) {
 function pixelToVertexCoordinates(xPos, yPos, canvasHeight, canvasWidth) {
 	let normalizedX = xPos / canvasWidth;
 	let normalizedY = yPos / canvasHeight;
-	let cartX = 2.0 * normalizedX - 1.0;
-	let cartY = 2.0 * normalizedY - 1.0;
+	let normalizedOffsetX = OFFSET_X / canvasWidth;
+	let normalizedOffsetY = OFFSET_Y / canvasHeight;
+	let cartX = 2.0 * (normalizedX + normalizedOffsetX) - 1.0;
+	let cartY = 2.0 * (normalizedY + normalizedOffsetY) - 1.0;
 	return [cartX, cartY];
 }
 
@@ -232,43 +235,36 @@ function pixelToCartesianCoordinates(xPos, yPos, canvasHeight, canvasWidth) {
 	return [x, y];
 }
 
-function handleZoom(e){
+
+async function handleZoom(e){
     let xPos = e.offsetX;
     let yPos = e.offsetY;
     //convert the zoom coords to cartesian coords
 
-    let [offsetX2,offsetY2] = pixelToCartesianCoordinates(xPos, yPos, canvas.height, canvas.width) 
+	let [offsetX2, offsetY2] = pixelToVertexCoordinates(xPos, yPos, canvas.height, canvas.width);
+    //let [offsetX2, offsetY2] = pixelToCartesianCoordinates(xPos, yPos, canvas.height, canvas.width);
+	console.log(`offsetx:${offsetX2}, offsety${offsetY2}`);
 
     OFFSET_X = offsetX2;
     OFFSET_Y = offsetY2;
-    let SCALE_FACTOR2 = 1/10*SCALE_FACTOR;
+    let SCALE_FACTOR2 = 1/2*SCALE_FACTOR;
     SCALE_FACTOR = SCALE_FACTOR2;
 
 
-    for(let xp=0;xp<width+1;xp++){
-        for(let yp=0;yp<height+1;yp++){
-            plotMandelbrot(xp,yp,100,SCALE_FACTOR2,offsetX,offsetY);
-        }
-    }
-
+	await initWebGPU();
 }
 
-function handleZoomOut(e){
+async function handleZoomOut(e){
     e.preventDefault();
-    let SCALE_FACTOR2 = Math.min(10*SCALE_FACTOR,1);
+    let SCALE_FACTOR2 = Math.min(2*SCALE_FACTOR,1);
+
     SCALE_FACTOR = SCALE_FACTOR2;
     if(SCALE_FACTOR==1){
         OFFSET_X = 0;
         OFFSET_Y = 0;
     }
 
-
-    for(let xp=0;xp<width+1;xp++){
-        for(let yp=0;yp<height+1;yp++){
-            plotMandelbrot(xp,yp,100,SCALE_FACTOR2,offsetX,offsetY);
-        }
-    }
-
+	await initWebGPU();
 }
 
 initWebGPU();
