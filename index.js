@@ -221,10 +221,10 @@ function singleMandelbrotCalculation(zPrev, c) {
 function pixelToVertexCoordinates(xPos, yPos, canvasHeight, canvasWidth) {
 	let normalizedX = xPos / canvasWidth;
 	let normalizedY = yPos / canvasHeight;
-	let normalizedOffsetX = OFFSET_X / canvasWidth;
-	let normalizedOffsetY = OFFSET_Y / canvasHeight;
-	let cartX = 2.0 * (normalizedX + normalizedOffsetX) - 1.0;
-	let cartY = 2.0 * (normalizedY + normalizedOffsetY) - 1.0;
+	let normalizedXOffset = OFFSET_X / canvasWidth;
+	let normalizedYOffset = OFFSET_Y / canvasHeight;
+	let cartX = 2.0 * SCALE_FACTOR * normalizedX - 1.0 + normalizedXOffset;
+	let cartY = 2.0 * SCALE_FACTOR *  normalizedY - 1.0 + normalizedYOffset;
 	return [cartX, cartY];
 }
 
@@ -241,12 +241,17 @@ async function handleZoom(e){
     let yPos = e.offsetY;
     //convert the zoom coords to cartesian coords
 
-	let [offsetX2, offsetY2] = pixelToVertexCoordinates(xPos, yPos, canvas.height, canvas.width);
-    //let [offsetX2, offsetY2] = pixelToCartesianCoordinates(xPos, yPos, canvas.height, canvas.width);
-	console.log(`offsetx:${offsetX2}, offsety${offsetY2}`);
+	//let [offsetX2, offsetY2] = pixelToVertexCoordinates(xPos, yPos, canvas.height, canvas.width);
+    let [offsetX2, offsetY2] = pixelToCartesianCoordinates(xPos, yPos, canvas.height, canvas.width);
+	//console.log(`offsetx:${offsetX2}, offsety${offsetY2}`);
+	console.log(`offsetx:${xPos}, offsety${yPos}`);
 
-    OFFSET_X = offsetX2;
+	OFFSET_X = offsetX2;
+    //OFFSET_X = xPos;
+	//OFFSET_X = (OFFSET_X - offsetX2) * SCALE_FACTOR + offsetX2;
+	//OFFSET_Y = (OFFSET_Y - offsetY2) * SCALE_FACTOR + offsetY2;
     OFFSET_Y = offsetY2;
+    //OFFSET_Y = yPos;
     let SCALE_FACTOR2 = 1/2*SCALE_FACTOR;
     SCALE_FACTOR = SCALE_FACTOR2;
 
